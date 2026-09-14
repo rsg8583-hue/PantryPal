@@ -8,6 +8,7 @@
     "start": "next start",
     "test": "vitest",
     "lint": "eslint . --max-warnings 0",
+    "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts"
