@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { dietaryPreferences, mealHistory, pantryItems, recipes, shoppingList } from "@/lib/data";
+import { dietaryPreferences, getPantryItemStatus, getWeeklyMealChart, mealHistory, pantryItems, recipes, shoppingList as defaultShoppingList } from "@/lib/data";
 
 type PantryEntry = {
   id: string;
@@ -33,6 +33,12 @@ type MealEntry = {
   value: number;
 };
 
+type ShoppingItem = {
+  name: string;
+  quantity: string;
+  unit: string;
+};
+
 function getItemEmoji(name: string) {
   const lowerName = name.toLowerCase();
 
@@ -49,59 +55,73 @@ function getItemEmoji(name: string) {
 }
 
 export default function HomePage() {
-  const [pantryInventory] = useState<PantryEntry[]>(() => {
-    if (typeof window === "undefined") {
-      return pantryItems as PantryEntry[];
-    }
-
-    const stored = window.localStorage.getItem("pantrypal-pantry-items");
-    if (!stored) {
-      return pantryItems as PantryEntry[];
-    }
-
-    try {
-      return JSON.parse(stored) as PantryEntry[];
-    } catch {
-      return pantryItems as PantryEntry[];
-    }
-  });
+  const [pantryInventory, setPantryInventory] = useState<PantryEntry[]>(pantryItems as PantryEntry[]);
+  const [hydrated, setHydrated] = useState(false);
   const summary = useMemo(
     () => ({
       totalItems: pantryInventory.length,
-      expiringSoon: pantryInventory.filter((item) => item.status === "expiring" || item.status === "expired").length,
-      lowStock: pantryInventory.filter((item) => item.status === "low").length,
+      expiringSoon: pantryInventory.filter((item) => {
+        const status = getPantryItemStatus(item);
+        return status === "expiring" || status === "expired";
+      }).length,
+      lowStock: pantryInventory.filter((item) => getPantryItemStatus(item) === "low").length,
     }),
     [pantryInventory]
   );
   const [preferences, setPreferences] = useState(dietaryPreferences);
   const [newPreference, setNewPreference] = useState("");
-  const [mealEntries, setMealEntries] = useState<MealEntry[]>(() => {
-    if (typeof window === "undefined") {
-      return mealHistory as MealEntry[];
-    }
-
-    const saved = window.localStorage.getItem("pantrypal-meal-history");
-    if (!saved) {
-      return mealHistory as MealEntry[];
-    }
-
-    try {
-      return JSON.parse(saved) as MealEntry[];
-    } catch {
-      return mealHistory as MealEntry[];
-    }
-  });
+  const [mealEntries, setMealEntries] = useState<MealEntry[]>(mealHistory as MealEntry[]);
+  const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>(defaultShoppingList as ShoppingItem[]);
   const [mealName, setMealName] = useState("Chicken Rice Bowl");
   const [mealDate, setMealDate] = useState(new Date().toISOString().slice(0, 10));
   const [recommendation, setRecommendation] = useState("Loading your meal intelligence...");
   const [isGenerating, setIsGenerating] = useState(false);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("pantrypal-meal-history", JSON.stringify(mealEntries));
-      window.localStorage.setItem("pantrypal-pantry-items", JSON.stringify(pantryInventory));
+    if (typeof window === "undefined") {
+      return;
     }
-  }, [mealEntries, pantryInventory]);
+
+    const storedPantry = window.localStorage.getItem("pantrypal-pantry-items");
+    const storedMeals = window.localStorage.getItem("pantrypal-meal-history");
+    const storedShopping = window.localStorage.getItem("pantrypal-shopping-list");
+
+    if (storedPantry) {
+      try {
+        setPantryInventory(JSON.parse(storedPantry) as PantryEntry[]);
+      } catch {
+        setPantryInventory(pantryItems as PantryEntry[]);
+      }
+    }
+
+    if (storedMeals) {
+      try {
+        setMealEntries(JSON.parse(storedMeals) as MealEntry[]);
+      } catch {
+        setMealEntries(mealHistory as MealEntry[]);
+      }
+    }
+
+    if (storedShopping) {
+      try {
+        setShoppingItems(JSON.parse(storedShopping) as ShoppingItem[]);
+      } catch {
+        setShoppingItems(defaultShoppingList as ShoppingItem[]);
+      }
+    }
+
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated || typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem("pantrypal-meal-history", JSON.stringify(mealEntries));
+    window.localStorage.setItem("pantrypal-pantry-items", JSON.stringify(pantryInventory));
+    window.localStorage.setItem("pantrypal-shopping-list", JSON.stringify(shoppingItems));
+  }, [hydrated, mealEntries, pantryInventory, shoppingItems]);
 
   const addPreference = (event: React.FormEvent) => {
     event.preventDefault();
@@ -118,6 +138,10 @@ export default function HomePage() {
     setNewPreference("");
   };
 
+  const removePreference = (preferenceToRemove: string) => {
+    setPreferences((current) => current.filter((pref) => pref !== preferenceToRemove));
+  };
+
   const addMealEntry = (event: React.FormEvent) => {
     event.preventDefault();
     const trimmedMeal = mealName.trim();
@@ -126,16 +150,13 @@ export default function HomePage() {
       return;
     }
 
-    const formattedDate = new Date(mealDate).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    });
+    const normalizedDate = new Date(`${mealDate}T12:00:00`).toISOString().slice(0, 10);
 
     setMealEntries((current: MealEntry[]) => [
       {
-        date: formattedDate,
+        date: normalizedDate,
         meal: trimmedMeal,
-        value: 5,
+        value: 1,
       },
       ...current,
     ]);
@@ -167,6 +188,7 @@ export default function HomePage() {
   };
 
   const recentMeals = useMemo(() => mealEntries.slice(0, 5), [mealEntries]);
+  const weeklyMealChart = useMemo(() => getWeeklyMealChart(mealEntries), [mealEntries]);
 
   const suggestedRecipes = useMemo(() => {
     const pantryNames = pantryInventory.map((item) => item.name.toLowerCase());
@@ -222,16 +244,22 @@ export default function HomePage() {
             </div>
             <div className="flex items-center gap-3">
               <Link
+                href="/meal-history"
+                className="rounded-full border border-[#e7d9cf] bg-[#f9f2ee] px-4 py-2.5 text-sm font-semibold text-[#4d685d] transition hover:bg-[#f3e8e2]"
+              >
+                Meal history
+              </Link>
+              <Link
                 href="/recipes"
                 className="rounded-full border border-[#e7d9cf] bg-[#f9f2ee] px-4 py-2.5 text-sm font-semibold text-[#4d685d] transition hover:bg-[#f3e8e2]"
               >
                 View recipes
               </Link>
               <Link
-                href="/inventory?quickAdd=1"
+                href="/inventory"
                 className="rounded-full bg-gradient-to-r from-[#7c9b82] via-[#658b73] to-[#c97d5d] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#dcc4b5] transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#dcc4b5]"
               >
-                + Add item
+                Add item
               </Link>
             </div>
           </div>
@@ -244,15 +272,16 @@ export default function HomePage() {
             { label: "Low stock", value: summary.lowStock, accent: "bg-[#f9f0d8] text-[#8d6a1d]", glow: "from-[#ebd79d]/20 to-[#f5efd6]/20" },
             { label: "Recipes ready", value: recipes.length, accent: "bg-[#edf3f7] text-[#4a6476]", glow: "from-[#b7d0dc]/20 to-[#dfe7ee]/20" },
           ].map((card) => (
-            <div
+            <Link
               key={card.label}
-              className={`rounded-3xl border border-white/80 bg-gradient-to-br ${card.glow} p-4 shadow-[0_18px_40px_rgba(15,23,42,0.06)] transition hover:-translate-y-1`}
+              href="/inventory"
+              className={`block rounded-3xl border border-white/80 bg-gradient-to-br ${card.glow} p-4 shadow-[0_18px_40px_rgba(15,23,42,0.06)] transition hover:-translate-y-1`}
             >
               <div className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${card.accent}`}>
                 {card.label}
               </div>
               <div className="mt-4 text-3xl font-black text-slate-900">{card.value}</div>
-            </div>
+            </Link>
           ))}
         </section>
 
@@ -267,9 +296,10 @@ export default function HomePage() {
 
             <div className="space-y-3">
               {pantryInventory.map((item) => (
-                <div
+                <Link
                   key={item.id}
-                  className="flex items-center justify-between rounded-2xl border border-slate-200/80 bg-gradient-to-r from-slate-50 to-white px-4 py-3 shadow-sm"
+                  href="/inventory"
+                  className="flex items-center justify-between rounded-2xl border border-slate-200/80 bg-gradient-to-r from-slate-50 to-white px-4 py-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md"
                 >
                   <div className="flex items-center gap-3">
                     <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[#edf4ee] to-[#f4e5db] text-xl shadow-inner">
@@ -284,11 +314,11 @@ export default function HomePage() {
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="hidden text-sm text-slate-500 sm:inline">Expires {item.expiration}</span>
-                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${getStatusClasses(item.status)}`}>
-                      {item.status}
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${getStatusClasses(getPantryItemStatus(item))}`}>
+                      {getPantryItemStatus(item)}
                     </span>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           </div>
@@ -329,7 +359,7 @@ export default function HomePage() {
             <div className="rounded-[30px] border border-white/80 bg-white/80 p-5 shadow-[0_20px_50px_rgba(15,23,42,0.06)] backdrop-blur-xl">
               <h2 className="text-xl font-bold text-slate-900">Shopping list</h2>
               <div className="mt-4 space-y-3">
-                {shoppingList.map((item) => (
+                {shoppingItems.map((item) => (
                   <div key={item.name} className="flex items-center justify-between rounded-2xl bg-gradient-to-r from-slate-50 to-white px-3 py-2.5 text-sm shadow-sm">
                     <span className="font-medium text-slate-700">{item.name}</span>
                     <span className="text-slate-500">
@@ -378,13 +408,14 @@ export default function HomePage() {
             </form>
 
             <div className="mt-5 flex items-end gap-3">
-              {mealEntries.slice(0, 6).map((entry: MealEntry) => (
-                <div key={`${entry.date}-${entry.meal}`} className="flex flex-1 flex-col items-center gap-2">
+              {weeklyMealChart.map((entry) => (
+                <div key={entry.label} className="flex flex-1 flex-col items-center gap-2">
+                  <span className="text-[10px] font-semibold text-slate-500">{entry.value}</span>
                   <div
-                    style={{ height: `${Math.max(entry.value, 1) * 22}px` }}
+                    style={{ height: `${Math.max(entry.value, 0) * 22 + (entry.value > 0 ? 8 : 0)}px` }}
                     className="w-full max-w-10 rounded-t-xl bg-gradient-to-t from-[#9fb39d] via-[#c9a894] to-[#dca387] shadow-sm"
                   />
-                  <span className="text-xs font-medium text-slate-500">{entry.date}</span>
+                  <span className="text-[11px] font-medium text-slate-500">{entry.label}</span>
                 </div>
               ))}
             </div>
@@ -408,9 +439,16 @@ export default function HomePage() {
             <h2 className="text-xl font-bold text-slate-900">Preferences</h2>
             <div className="mt-4 flex flex-wrap gap-2">
               {preferences.map((pref) => (
-                <span key={pref} className="rounded-full bg-slate-100 px-3 py-1.5 text-sm text-slate-700 ring-1 ring-slate-200">
-                  {pref}
-                </span>
+                <button
+                  key={pref}
+                  type="button"
+                  onClick={() => removePreference(pref)}
+                  className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-sm text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-200"
+                  aria-label={`Remove preference ${pref}`}
+                >
+                  <span>{pref}</span>
+                  <span aria-hidden="true">×</span>
+                </button>
               ))}
             </div>
             <form onSubmit={addPreference} className="mt-5 flex gap-2">

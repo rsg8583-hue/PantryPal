@@ -23,6 +23,7 @@ const navItems = [
   { href: "/inventory", label: "Inventory" },
   { href: "/recipes", label: "Recipes" },
   { href: "/shopping", label: "Shopping" },
+  { href: "/meal-history", label: "Meal history" },
 ];
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -51,12 +52,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                 </Link>
               ))}
             </nav>
-            <Link
-              href="/inventory?quickAdd=1"
-              className="rounded-full bg-gradient-to-r from-[#7c9b82] via-[#5f7964] to-[#c87d5f] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#d8c7b7] transition hover:translate-y-[-1px] hover:shadow-xl hover:shadow-[#d8c7b7]"
-            >
-              Quick add
-            </Link>
           </div>
         </div>
         {children}
