@@ -54,6 +54,10 @@ export default function RecipesPage() {
     setShowForm(false);
   };
 
+  const handleDeleteRecipe = (id: string) => {
+    setRecipeList((current) => current.filter((recipe) => recipe.id !== id));
+  };
+
   return (
     <main className="min-h-screen bg-[#edf5ec] p-6 text-slate-800">
       <div className="mx-auto max-w-6xl space-y-6">
@@ -142,8 +146,19 @@ export default function RecipesPage() {
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           {recipeList.map((recipe) => (
             <article key={recipe.id} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <h2 className="text-xl font-semibold text-slate-900">{recipe.title}</h2>
+                <button
+                  type="button"
+                  aria-label={`Delete ${recipe.title}`}
+                  onClick={() => handleDeleteRecipe(recipe.id)}
+                  className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 transition hover:border-red-200 hover:text-red-600"
+                >
+                  Delete
+                </button>
+              </div>
+
+              <div className="mt-2 flex items-center justify-between">
                 <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-700">
                   {recipe.match}% match
                 </span>

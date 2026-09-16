@@ -47,6 +47,10 @@ export default function ShoppingPage() {
     setItems((current) => current.filter((item) => item.name !== name));
   };
 
+  const handleDeleteItem = (name: string) => {
+    setItems((current) => current.filter((item) => item.name !== name));
+  };
+
   return (
     <main className="min-h-screen bg-[#edf5ec] p-6 text-slate-800">
       <div className="mx-auto max-w-6xl space-y-6">
@@ -112,13 +116,23 @@ export default function ShoppingPage() {
                   <div className="font-medium text-slate-800">{item.name}</div>
                   <div className="text-sm text-slate-500">{item.quantity} {item.unit}</div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleBuy(item.name)}
-                  className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600"
-                >
-                  Buy
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleBuy(item.name)}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600"
+                  >
+                    Buy
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Delete ${item.name}`}
+                    onClick={() => handleDeleteItem(item.name)}
+                    className="rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600"
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
             ))}
           </div>

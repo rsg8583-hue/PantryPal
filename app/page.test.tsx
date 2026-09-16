@@ -1,6 +1,17 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { vi } from 'vitest';
 import HomePage from './page';
+import InventoryPage from './inventory/page';
+import RecipesPage from './recipes/page';
 import ShoppingPage from './shopping/page';
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    replace: vi.fn(),
+    push: vi.fn(),
+    prefetch: vi.fn(),
+  }),
+}));
 
 describe('HomePage', () => {
   it('renders the PantryPal dashboard headline', () => {
@@ -17,6 +28,28 @@ describe('HomePage', () => {
     expect(screen.getByText(/items in pantry/i)).toBeInTheDocument();
     expect(screen.getByText(/expiring soon/i)).toBeInTheDocument();
     expect(screen.getByText(/low stock/i)).toBeInTheDocument();
+  });
+});
+
+describe('InventoryPage', () => {
+  it('removes an inventory item when delete is clicked', () => {
+    render(<InventoryPage />);
+
+    const chicken = screen.getByText('Chicken Breast');
+    fireEvent.click(screen.getByRole('button', { name: /delete chicken breast/i }));
+
+    expect(chicken).not.toBeInTheDocument();
+  });
+});
+
+describe('RecipesPage', () => {
+  it('removes a recipe when delete is clicked', () => {
+    render(<RecipesPage />);
+
+    const recipeTitle = screen.getByText('Chicken Rice Bowl');
+    fireEvent.click(screen.getByRole('button', { name: /delete chicken rice bowl/i }));
+
+    expect(recipeTitle).not.toBeInTheDocument();
   });
 });
 
@@ -47,5 +80,14 @@ describe('ShoppingPage', () => {
     fireEvent.click(screen.getAllByRole('button', { name: /buy/i })[0]);
 
     expect(avocado).not.toBeInTheDocument();
+  });
+
+  it('removes a shopping list item when delete is clicked', () => {
+    render(<ShoppingPage />);
+
+    const lime = screen.getByText('Lime');
+    fireEvent.click(screen.getByRole('button', { name: /delete lime/i }));
+
+    expect(lime).not.toBeInTheDocument();
   });
 });

@@ -49,6 +49,10 @@ export default function InventoryPage() {
     router.replace("/inventory");
   };
 
+  const handleDeleteItem = (id: string) => {
+    setItems((current) => current.filter((item) => item.id !== id));
+  };
+
   return (
     <main className="min-h-screen bg-[#edf5ec] p-6 text-slate-800">
       <div className="mx-auto max-w-6xl space-y-6">
@@ -147,17 +151,27 @@ export default function InventoryPage() {
                   <td className="px-5 py-4">{item.location}</td>
                   <td className="px-5 py-4">{item.expiration}</td>
                   <td className="px-5 py-4">
-                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                      item.status === "expired"
-                        ? "bg-red-100 text-red-700"
-                        : item.status === "expiring"
-                          ? "bg-amber-100 text-amber-700"
-                          : item.status === "low"
-                            ? "bg-yellow-100 text-yellow-700"
-                            : "bg-emerald-100 text-emerald-700"
-                    }`}>
-                      {item.status}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        item.status === "expired"
+                          ? "bg-red-100 text-red-700"
+                          : item.status === "expiring"
+                            ? "bg-amber-100 text-amber-700"
+                            : item.status === "low"
+                              ? "bg-yellow-100 text-yellow-700"
+                              : "bg-emerald-100 text-emerald-700"
+                      }`}>
+                        {item.status}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={`Delete ${item.name}`}
+                        onClick={() => handleDeleteItem(item.id)}
+                        className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 transition hover:border-red-200 hover:text-red-600"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
