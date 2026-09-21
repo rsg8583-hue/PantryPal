@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { dietaryPreferences, formatNutrientFacts, getPantryItemStatus, getRecipeNutrition, getWeeklyMealChart, mealHistory, pantryItems, recipes, shoppingList as defaultShoppingList } from "@/lib/data";
 import { getCurrentUser, saveCurrentUser } from "@/lib/user-storage";
 
@@ -87,6 +87,7 @@ export default function HomePage() {
   const [recommendation, setRecommendation] = useState<RecommendationRecipe | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRecipeSaved, setIsRecipeSaved] = useState(false);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -212,7 +213,10 @@ export default function HomePage() {
   };
 
   const generateRecommendation = async () => {
+    const currentRequestId = ++requestIdRef.current;
     setIsGenerating(true);
+    setRecommendation(null);
+    setIsRecipeSaved(false);
 
     try {
       const response = await fetch("/api/recommendations", {
@@ -227,6 +231,10 @@ export default function HomePage() {
 
       const data = await response.json();
       const recipe = data.recipe ?? data.recommendation;
+
+      if (currentRequestId !== requestIdRef.current) {
+        return;
+      }
 
       if (recipe && typeof recipe === "object" && recipe.title) {
         const createdRecipe: RecommendationRecipe = {
@@ -248,10 +256,16 @@ export default function HomePage() {
       setRecommendation(null);
       setIsRecipeSaved(false);
     } catch {
+      if (currentRequestId !== requestIdRef.current) {
+        return;
+      }
+
       setRecommendation(null);
       setIsRecipeSaved(false);
     } finally {
-      setIsGenerating(false);
+      if (currentRequestId === requestIdRef.current) {
+        setIsGenerating(false);
+      }
     }
   };
 
@@ -461,8 +475,9 @@ export default function HomePage() {
                 onClick={generateRecommendation}
                 disabled={isGenerating}
                 className="rounded-full bg-gradient-to-r from-[#7c9b82] to-[#c77f5d] px-3 py-1.5 text-xs font-semibold text-white shadow-md shadow-[#dcc4b5] hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label="Generate new suggestion"
               >
-                {isGenerating ? "Thinking..." : "AI suggestions"}
+                {isGenerating ? "Thinking..." : "Generate new suggestion"}
               </button>
             </div>
 

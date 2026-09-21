@@ -109,6 +109,24 @@ describe('HomePage', () => {
         expect(screen.getByText(/recipes ready/i)).toBeInTheDocument();
     });
 
+    it('generates a fresh AI suggestion whenever the button is clicked again', async () => {
+        global.fetch = vi.fn()
+            .mockResolvedValueOnce({
+                json: async () => ({ recipe: { title: 'Fresh Bowl', time: '20 min', servings: 2, tags: ['Quick'], ingredients: ['Rice'], instructions: ['Cook rice'] } }),
+            })
+            .mockResolvedValueOnce({
+                json: async () => ({ recipe: { title: 'Second Bowl', time: '18 min', servings: 1, tags: ['Fast'], ingredients: ['Eggs'], instructions: ['Cook eggs'] } }),
+            });
+
+        render(<HomePage />);
+
+        fireEvent.click(screen.getByRole('button', { name: /generate new suggestion/i }));
+        expect(await screen.findByText('Fresh Bowl')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: /generate new suggestion/i }));
+        expect(await screen.findByText('Second Bowl')).toBeInTheDocument();
+    });
+
     it('shows the saved shopping list items on the dashboard', () => {
         window.localStorage.setItem(
             'pantrypal-shopping-list',
@@ -135,8 +153,10 @@ describe('HomePage', () => {
 
         render(<HomePage />);
 
-        expect(screen.getByText('Recipes ready')).toBeInTheDocument();
-        expect(screen.getByText('0')).toBeInTheDocument();
+        const cardsReady = screen.getByText('Recipes ready').closest('a');
+
+        expect(cardsReady).not.toBeNull();
+        expect(cardsReady).toHaveTextContent('0');
     });
 
     it('ranks the signed-in user\'s saved recipes instead of the built-in recipe catalog', () => {
