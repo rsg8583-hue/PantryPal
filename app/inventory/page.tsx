@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getPantryItemStatus, pantryItems } from "@/lib/data";
+import { getCurrentUser, saveCurrentUser } from "@/lib/user-storage";
 
 export default function InventoryPage() {
     const router = useRouter();
-    const [items, setItems] = useState(pantryItems);
+    const currentUser = getCurrentUser();
+    const [items, setItems] = useState(currentUser ? (currentUser.pantry ?? []) : pantryItems);
     const [hydrated, setHydrated] = useState(false);
     const [showForm, setShowForm] = useState(false);
     const [form, setForm] = useState({
@@ -23,11 +25,23 @@ export default function InventoryPage() {
             return;
         }
 
+        if (currentUser) {
+            saveCurrentUser({ ...currentUser, pantry: items });
+            return;
+        }
+
         window.localStorage.setItem("pantrypal-pantry-items", JSON.stringify(items));
-    }, [hydrated, items]);
+    }, [currentUser, hydrated, items]);
 
     useEffect(() => {
         if (typeof window === "undefined") {
+            return;
+        }
+
+        const user = getCurrentUser();
+        if (user) {
+            setItems(user.pantry ?? []);
+            setHydrated(true);
             return;
         }
 
@@ -185,9 +199,7 @@ export default function InventoryPage() {
                                                     ? "bg-red-100 text-red-700"
                                                     : getPantryItemStatus(item) === "expiring"
                                                         ? "bg-amber-100 text-amber-700"
-                                                        : getPantryItemStatus(item) === "low"
-                                                            ? "bg-yellow-100 text-yellow-700"
-                                                            : "bg-emerald-100 text-emerald-700"
+                                                        : "bg-emerald-100 text-emerald-700"
                                                 }`}>
                                                 {getPantryItemStatus(item)}
                                             </span>

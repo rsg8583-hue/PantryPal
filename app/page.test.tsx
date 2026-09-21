@@ -1,10 +1,12 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { vi } from 'vitest';
-import { getPantryItemStatus, getWeeklyMealChart } from '@/lib/data';
+import { getIngredientNutrition, getPantryItemStatus, getRecipeNutrition, getWeeklyMealChart } from '@/lib/data';
 import HomePage from './page';
 import InventoryPage from './inventory/page';
 import RecipesPage from './recipes/page';
 import ShoppingPage from './shopping/page';
+import { signInUser } from '@/lib/user-storage';
+import { POST } from './api/recommendations/route';
 
 beforeEach(() => {
     window.localStorage.clear();
@@ -18,6 +20,66 @@ vi.mock('next/navigation', () => ({
     }),
 }));
 
+describe('User auth', () => {
+    it('creates a new empty user profile when logging in', () => {
+        const user = signInUser('amy', 'secret');
+
+        expect(user).not.toBeNull();
+        expect(user?.username).toBe('amy');
+        expect(user?.pantry).toEqual([]);
+        expect(user?.recipes).toEqual([]);
+        expect(user?.shopping).toEqual([]);
+        expect(user?.mealHistory).toEqual([]);
+        expect(user?.preferences).toEqual([]);
+    });
+});
+
+describe('Recommendation API', () => {
+    it('returns a structured recipe object with the required fields', async () => {
+        const request = new Request('http://localhost/api/recommendations', {
+            method: 'POST',
+            body: JSON.stringify({
+                mealHistory: [{ date: 'Mon', meal: 'Chicken Bowl', value: 1 }],
+                pantryItems: [{ name: 'Chicken Breast', quantity: 1, unit: 'kg', expiration: '2026-12-31', location: 'Fridge', status: 'fresh' }],
+                preferences: ['High protein'],
+            }),
+        });
+
+        const response = await POST(request);
+        const data = await response.json();
+
+        expect(data.recipe).toMatchObject({
+            title: expect.any(String),
+            time: expect.any(String),
+            servings: expect.any(Number),
+            tags: expect.any(Array),
+            ingredients: expect.any(Array),
+            instructions: expect.any(Array),
+        });
+    });
+});
+
+describe('Nutrition data', () => {
+    it('calculates nutrition for a single ingredient and a full recipe', () => {
+        const ingredient = getIngredientNutrition('Chicken Breast');
+        const recipe = getRecipeNutrition(['Chicken Breast', 'Rice', 'Spinach']);
+
+        expect(ingredient).toMatchObject({
+            calories: expect.any(Number),
+            protein: expect.any(Number),
+            carbs: expect.any(Number),
+            fat: expect.any(Number),
+        });
+
+        expect(recipe).toMatchObject({
+            calories: expect.any(Number),
+            protein: expect.any(Number),
+            carbs: expect.any(Number),
+            fat: expect.any(Number),
+        });
+    });
+});
+
 describe('HomePage', () => {
     it('counts one meal per entry on the weekly bar', () => {
         const chart = getWeeklyMealChart([
@@ -25,7 +87,7 @@ describe('HomePage', () => {
             { date: 'Mon', meal: 'Oatmeal', value: 3 },
             { date: 'Thu', meal: 'Salad', value: 4 },
             { date: '2026-09-15', meal: 'Pasta', value: 2 },
-        ]);
+        ] as Array<{ date: string; meal: string; value?: number }>);
 
         expect(chart.find((entry) => entry.label === 'Mon')?.value).toBe(2);
         expect(chart.find((entry) => entry.label === 'Thu')?.value).toBe(1);
@@ -44,7 +106,7 @@ describe('HomePage', () => {
 
         expect(screen.getByText(/items in pantry/i)).toBeInTheDocument();
         expect(screen.getByText(/expiring soon/i)).toBeInTheDocument();
-        expect(screen.getByText(/low stock/i)).toBeInTheDocument();
+        expect(screen.getByText(/recipes ready/i)).toBeInTheDocument();
     });
 
     it('shows the saved shopping list items on the dashboard', () => {
@@ -58,21 +120,85 @@ describe('HomePage', () => {
         expect(screen.getByText('Bananas')).toBeInTheDocument();
     });
 
+    it('starts a new signed-in user with an empty pantry and shopping list', () => {
+        signInUser('amy', 'secret');
+
+        render(<HomePage />);
+
+        expect(screen.queryByText('Chicken Breast')).not.toBeInTheDocument();
+        expect(screen.queryByText('Avocado')).not.toBeInTheDocument();
+        expect(screen.queryByText('family meals')).not.toBeInTheDocument();
+    });
+
+    it('shows zero ready recipes when the user starts with an empty pantry', () => {
+        signInUser('amy', 'secret');
+
+        render(<HomePage />);
+
+        expect(screen.getByText('Recipes ready')).toBeInTheDocument();
+        expect(screen.getByText('0')).toBeInTheDocument();
+    });
+
+    it('ranks the signed-in user\'s saved recipes instead of the built-in recipe catalog', () => {
+        const user = signInUser('amy', 'secret');
+        const customRecipes = [
+            {
+                id: 'custom-1',
+                title: 'Avo Egg Bowl',
+                time: '12 min',
+                servings: 1,
+                tags: ['Breakfast'],
+                match: 100,
+                ingredients: ['Avocado', 'Eggs'],
+                instructions: ['Cook eggs', 'Serve with avocado'],
+            },
+        ];
+
+        if (!user) {
+            throw new Error('User should exist after sign in');
+        }
+
+        const updatedUser = { ...user, pantry: [{
+            id: 'p1',
+            name: 'Avocado',
+            quantity: 2,
+            unit: 'count',
+            expiration: '2026-12-31',
+            location: 'Counter',
+            status: 'fresh',
+        }], recipes: customRecipes };
+        window.localStorage.setItem('pantrypal-users', JSON.stringify({ [updatedUser.id]: updatedUser }));
+        window.localStorage.setItem('pantrypal-current-user', updatedUser.id);
+
+        render(<HomePage />);
+
+        expect(screen.getByText('Avo Egg Bowl')).toBeInTheDocument();
+        expect(screen.queryByText('Chicken Rice Bowl')).not.toBeInTheDocument();
+    });
+
     it('links summary cards and pantry items to the inventory page', () => {
         render(<HomePage />);
 
         expect(screen.getByRole('link', { name: /items in pantry/i })).toHaveAttribute('href', '/inventory');
         expect(screen.getByRole('link', { name: /expiring soon/i })).toHaveAttribute('href', '/inventory');
-        expect(screen.getByRole('link', { name: /low stock/i })).toHaveAttribute('href', '/inventory');
+        expect(screen.getByRole('link', { name: /recipes ready/i })).toHaveAttribute('href', '/inventory');
         expect(screen.getByRole('link', { name: /chicken breast/i })).toHaveAttribute('href', '/inventory');
     });
 });
 
 describe('InventoryPage', () => {
     it('marks items as expiring within five days and expired after the date passes', () => {
-        expect(getPantryItemStatus({ quantity: 2, expiration: '2026-09-16' })).toBe('expiring');
-        expect(getPantryItemStatus({ quantity: 2, expiration: '2026-09-12' })).toBe('expired');
-        expect(getPantryItemStatus({ quantity: 0.5, expiration: '2026-12-31' })).toBe('low');
+        const today = new Date();
+        const soon = new Date(today);
+        soon.setDate(today.getDate() + 3);
+        const past = new Date(today);
+        past.setDate(today.getDate() - 2);
+        const future = new Date(today);
+        future.setDate(today.getDate() + 20);
+
+        expect(getPantryItemStatus({ quantity: 2, expiration: soon.toISOString().slice(0, 10) })).toBe('expiring');
+        expect(getPantryItemStatus({ quantity: 2, expiration: past.toISOString().slice(0, 10) })).toBe('expired');
+        expect(getPantryItemStatus({ quantity: 0.5, expiration: future.toISOString().slice(0, 10) })).toBe('fresh');
     });
 
     it('keeps newly added pantry items after reload', () => {

@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { recipes } from "@/lib/data";
+import { formatNutrientFacts, getIngredientNutrition, getRecipeNutrition, recipes } from "@/lib/data";
+import { getCurrentUser, saveCurrentUser } from "@/lib/user-storage";
 
 export default function RecipesPage() {
-    const [recipeList, setRecipeList] = useState(recipes);
+    const currentUser = getCurrentUser();
+    const [recipeList, setRecipeList] = useState(currentUser ? (currentUser.recipes ?? []) : recipes);
     const [hydrated, setHydrated] = useState(false);
     const [showForm, setShowForm] = useState(false);
     const [form, setForm] = useState({
@@ -21,11 +23,23 @@ export default function RecipesPage() {
             return;
         }
 
+        if (currentUser) {
+            saveCurrentUser({ ...currentUser, recipes: recipeList });
+            return;
+        }
+
         window.localStorage.setItem("pantrypal-recipes", JSON.stringify(recipeList));
-    }, [hydrated, recipeList]);
+    }, [currentUser, hydrated, recipeList]);
 
     useEffect(() => {
         if (typeof window === "undefined") {
+            return;
+        }
+
+        const user = getCurrentUser();
+        if (user) {
+            setRecipeList(user.recipes ?? []);
+            setHydrated(true);
             return;
         }
 
@@ -207,15 +221,33 @@ export default function RecipesPage() {
                             <div className="mt-5">
                                 <h3 className="text-sm font-semibold uppercase tracking-[0.15em] text-slate-500">Ingredients</h3>
                                 <ul className="mt-2 space-y-2 text-sm text-slate-700">
-                                    {recipe.ingredients.map((ingredient) => (
-                                        <li key={ingredient} className="flex items-center gap-2">
-                                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                                            <a href="/inventory" className="transition hover:text-emerald-700 hover:underline">
-                                                {ingredient}
-                                            </a>
-                                        </li>
-                                    ))}
+                                    {recipe.ingredients.map((ingredient) => {
+                                        const nutrientFacts = getIngredientNutrition(ingredient);
+
+                                        return (
+                                            <li key={ingredient} className="flex items-start justify-between gap-3">
+                                                <div className="flex items-start gap-2">
+                                                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                                    <a href="/inventory" className="transition hover:text-emerald-700 hover:underline">
+                                                        {ingredient}
+                                                    </a>
+                                                </div>
+                                                <span className="text-right text-[11px] text-slate-500">
+                                                    {Math.round(nutrientFacts.calories)} cal
+                                                    <br />
+                                                    {Math.round(nutrientFacts.protein)}g protein
+                                                </span>
+                                            </li>
+                                        );
+                                    })}
                                 </ul>
+                            </div>
+
+                            <div className="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.15em] text-emerald-700">Recipe nutrition</div>
+                                <div className="mt-1 text-sm font-medium text-slate-700">
+                                    {formatNutrientFacts(getRecipeNutrition(recipe.ingredients))}
+                                </div>
                             </div>
 
                             <div className="mt-5">

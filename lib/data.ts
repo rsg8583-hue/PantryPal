@@ -7,7 +7,7 @@ export type PantryItem = {
     unit: string;
     expiration: string;
     location: string;
-    status: "fresh" | "low" | "expiring" | "expired";
+    status: "fresh" | "expiring" | "expired";
 };
 
 export type Recipe = {
@@ -227,6 +227,70 @@ export const dietaryPreferences = [
     "Family meals",
 ];
 
+export type NutrientFacts = {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+};
+
+const ingredientNutritionMap: Record<string, NutrientFacts> = {
+    "Chicken Breast": { calories: 165, protein: 31, carbs: 0, fat: 4 },
+    "Greek Yogurt": { calories: 59, protein: 10, carbs: 3, fat: 0.4 },
+    "Rice": { calories: 205, protein: 4, carbs: 45, fat: 0.4 },
+    "Spinach": { calories: 23, protein: 2.9, carbs: 3.6, fat: 0.4 },
+    "Tomatoes": { calories: 18, protein: 0.9, carbs: 3.9, fat: 0.2 },
+    "Eggs": { calories: 72, protein: 6, carbs: 0.4, fat: 5 },
+    "Avocado": { calories: 160, protein: 2, carbs: 9, fat: 15 },
+    "Sweet Potato": { calories: 103, protein: 2.1, carbs: 24, fat: 0.2 },
+    "Broccoli": { calories: 34, protein: 2.8, carbs: 6.6, fat: 0.4 },
+    "Bell Pepper": { calories: 31, protein: 1, carbs: 7, fat: 0.3 },
+    "Cucumber": { calories: 16, protein: 0.7, carbs: 3.6, fat: 0.1 },
+    "Lime": { calories: 20, protein: 0.4, carbs: 7, fat: 0.1 },
+    "Salmon": { calories: 208, protein: 20, carbs: 0, fat: 13 },
+    "Garlic": { calories: 149, protein: 6.4, carbs: 33, fat: 0.5 },
+    "Onion": { calories: 40, protein: 1.1, carbs: 9.3, fat: 0.1 },
+    "Quinoa": { calories: 222, protein: 8.1, carbs: 39, fat: 3.6 },
+    "Berries": { calories: 57, protein: 1, carbs: 14, fat: 0.3 },
+    "Pasta": { calories: 200, protein: 7, carbs: 42, fat: 1 },
+    "Lemon": { calories: 17, protein: 0.6, carbs: 5, fat: 0.2 },
+    "Parsley": { calories: 22, protein: 2.8, carbs: 3.7, fat: 0.8 },
+};
+
+function normalizeIngredientName(name: string) {
+    return name.toLowerCase().trim().replace(/[^a-z]/g, "");
+}
+
+export function getIngredientNutrition(ingredientName: string): NutrientFacts {
+    const normalizedName = normalizeIngredientName(ingredientName);
+    const match = Object.entries(ingredientNutritionMap).find(([name]) => normalizeIngredientName(name) === normalizedName);
+
+    if (!match) {
+        return { calories: 0, protein: 0, carbs: 0, fat: 0 };
+    }
+
+    return { ...match[1] };
+}
+
+export function getRecipeNutrition(ingredientNames: string[]): NutrientFacts {
+    return ingredientNames.reduce<NutrientFacts>(
+        (totals, ingredientName) => {
+            const nutrition = getIngredientNutrition(ingredientName);
+            return {
+                calories: totals.calories + nutrition.calories,
+                protein: totals.protein + nutrition.protein,
+                carbs: totals.carbs + nutrition.carbs,
+                fat: totals.fat + nutrition.fat,
+            };
+        },
+        { calories: 0, protein: 0, carbs: 0, fat: 0 }
+    );
+}
+
+export function formatNutrientFacts(facts: NutrientFacts) {
+    return `${Math.round(facts.calories)} cal • ${Math.round(facts.protein)}g protein • ${Math.round(facts.carbs)}g carbs • ${Math.round(facts.fat)}g fat`;
+}
+
 export function getPantryItemStatus(item: Pick<PantryItem, "quantity" | "expiration">): PantryItem["status"] {
     const expirationDate = item.expiration ? new Date(item.expiration) : null;
 
@@ -244,10 +308,6 @@ export function getPantryItemStatus(item: Pick<PantryItem, "quantity" | "expirat
         if (diffDays <= 5) {
             return "expiring";
         }
-    }
-
-    if (item.quantity <= 1) {
-        return "low";
     }
 
     return "fresh";
@@ -314,7 +374,6 @@ export async function getRecipeData() {
 export const getInventorySummary = () => {
     const totalItems = pantryItems.length;
     const expiringSoon = pantryItems.filter((item) => item.status === "expiring" || item.status === "expired").length;
-    const lowStock = pantryItems.filter((item) => item.status === "low").length;
 
-    return { totalItems, expiringSoon, lowStock };
+    return { totalItems, expiringSoon };
 };

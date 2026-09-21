@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { pantryItems, shoppingList } from "@/lib/data";
+import { getCurrentUser, saveCurrentUser } from "@/lib/user-storage";
 
 type ShoppingItem = {
     name: string;
@@ -10,7 +11,8 @@ type ShoppingItem = {
 };
 
 export default function ShoppingPage() {
-    const [items, setItems] = useState<ShoppingItem[]>(shoppingList);
+    const currentUser = getCurrentUser();
+    const [items, setItems] = useState<ShoppingItem[]>(currentUser ? (currentUser.shopping ?? []) : shoppingList);
     const [hydrated, setHydrated] = useState(false);
     const [showForm, setShowForm] = useState(false);
     const [form, setForm] = useState({
@@ -24,11 +26,23 @@ export default function ShoppingPage() {
             return;
         }
 
+        if (currentUser) {
+            saveCurrentUser({ ...currentUser, shopping: items });
+            return;
+        }
+
         window.localStorage.setItem("pantrypal-shopping-list", JSON.stringify(items));
-    }, [hydrated, items]);
+    }, [currentUser, hydrated, items]);
 
     useEffect(() => {
         if (typeof window === "undefined") {
+            return;
+        }
+
+        const user = getCurrentUser();
+        if (user) {
+            setItems(user.shopping ?? []);
+            setHydrated(true);
             return;
         }
 
@@ -88,8 +102,9 @@ export default function ShoppingPage() {
             return;
         }
 
+        const user = getCurrentUser();
         const stored = window.localStorage.getItem("pantrypal-pantry-items");
-        const existingInventory = stored ? JSON.parse(stored) : pantryItems;
+        const existingInventory = user ? user.pantry : (stored ? JSON.parse(stored) : pantryItems);
         const nextInventory = Array.isArray(existingInventory) ? [...existingInventory] : [...pantryItems];
         const itemIndex = nextInventory.findIndex((existingItem: { name?: string }) =>
             String(existingItem?.name ?? "").trim().toLowerCase() === normalizedName.toLowerCase()
@@ -116,8 +131,12 @@ export default function ShoppingPage() {
             });
         }
 
-        window.localStorage.setItem("pantrypal-pantry-items", JSON.stringify(nextInventory));
-        window.localStorage.setItem("pantrypal-shopping-list", JSON.stringify(nextShoppingList));
+        if (user) {
+            saveCurrentUser({ ...user, pantry: nextInventory, shopping: nextShoppingList });
+        } else {
+            window.localStorage.setItem("pantrypal-pantry-items", JSON.stringify(nextInventory));
+            window.localStorage.setItem("pantrypal-shopping-list", JSON.stringify(nextShoppingList));
+        }
     };
 
     const handleDeleteItem = (name: string) => {

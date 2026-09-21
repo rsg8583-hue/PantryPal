@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { mealHistory } from "@/lib/data";
+import { getCurrentUser, saveCurrentUser } from "@/lib/user-storage";
 
 type MealEntry = {
   id: string;
@@ -12,8 +13,18 @@ type MealEntry = {
 
 const today = new Date().toISOString().slice(0, 10);
 
+function normalizeMealEntries(entries: Array<Partial<MealEntry> & { meal: string; date: string; value?: number }> = []) {
+  return entries.map((entry, index) => ({
+    id: entry.id ?? `${entry.date ?? 'unknown'}-${entry.meal ?? 'meal'}-${index}-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`}`,
+    meal: entry.meal,
+    date: entry.date,
+    value: entry.value ?? 1,
+  }));
+}
+
 export default function MealHistoryPage() {
-  const [entries, setEntries] = useState<MealEntry[]>([]);
+  const currentUser = getCurrentUser();
+  const [entries, setEntries] = useState<MealEntry[]>(currentUser ? normalizeMealEntries(currentUser.mealHistory as MealEntry[] ?? []) : []);
   const [hydrated, setHydrated] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
@@ -26,30 +37,37 @@ export default function MealHistoryPage() {
       return;
     }
 
+    const user = getCurrentUser();
+    if (user) {
+      setEntries(normalizeMealEntries(user.mealHistory as MealEntry[] ?? []));
+      setHydrated(true);
+      return;
+    }
+
     const stored = window.localStorage.getItem("pantrypal-meal-history");
     if (stored) {
       try {
         const parsed = JSON.parse(stored) as MealEntry[];
-        setEntries(parsed);
+        setEntries(normalizeMealEntries(parsed));
       } catch {
-        setEntries(
+        setEntries(normalizeMealEntries(
           mealHistory.map((entry, index) => ({
             id: `${entry.date}-${index}`,
             meal: entry.meal,
             date: entry.date,
             value: entry.value,
           }))
-        );
+        ));
       }
     } else {
-      setEntries(
+      setEntries(normalizeMealEntries(
         mealHistory.map((entry, index) => ({
           id: `${entry.date}-${index}`,
           meal: entry.meal,
           date: entry.date,
           value: entry.value,
         }))
-      );
+      ));
     }
 
     setHydrated(true);
@@ -60,8 +78,13 @@ export default function MealHistoryPage() {
       return;
     }
 
+    if (currentUser) {
+      saveCurrentUser({ ...currentUser, mealHistory: entries });
+      return;
+    }
+
     window.localStorage.setItem("pantrypal-meal-history", JSON.stringify(entries));
-  }, [hydrated, entries]);
+  }, [currentUser, hydrated, entries]);
 
   const handleAddMeal = (event: React.FormEvent) => {
     event.preventDefault();

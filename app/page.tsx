@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { dietaryPreferences, getPantryItemStatus, getWeeklyMealChart, mealHistory, pantryItems, recipes, shoppingList as defaultShoppingList } from "@/lib/data";
+import { dietaryPreferences, formatNutrientFacts, getPantryItemStatus, getRecipeNutrition, getWeeklyMealChart, mealHistory, pantryItems, recipes, shoppingList as defaultShoppingList } from "@/lib/data";
+import { getCurrentUser, saveCurrentUser } from "@/lib/user-storage";
 
 type PantryEntry = {
   id: string;
@@ -20,8 +21,6 @@ function getStatusClasses(status: string) {
       return "bg-[#f9e3dc] text-[#9b4d3c] ring-[#f1c8bd]";
     case "expiring":
       return "bg-[#f8efe2] text-[#9d643e] ring-[#ead6ba]";
-    case "low":
-      return "bg-[#f9f0d8] text-[#8d6a1d] ring-[#ecd99e]";
     default:
       return "bg-[#edf4ee] text-[#496a5a] ring-[#dfeae0]";
   }
@@ -37,6 +36,17 @@ type ShoppingItem = {
   name: string;
   quantity: string;
   unit: string;
+};
+
+type RecommendationRecipe = {
+  id: string;
+  title: string;
+  time: string;
+  servings: number;
+  tags: string[];
+  ingredients: string[];
+  instructions: string[];
+  match?: number;
 };
 
 function getItemEmoji(name: string) {
@@ -55,7 +65,8 @@ function getItemEmoji(name: string) {
 }
 
 export default function HomePage() {
-  const [pantryInventory, setPantryInventory] = useState<PantryEntry[]>(pantryItems as PantryEntry[]);
+  const currentUser = getCurrentUser();
+  const [pantryInventory, setPantryInventory] = useState<PantryEntry[]>(currentUser ? (currentUser.pantry ?? []) : (pantryItems as PantryEntry[]));
   const [hydrated, setHydrated] = useState(false);
   const summary = useMemo(
     () => ({
@@ -64,49 +75,57 @@ export default function HomePage() {
         const status = getPantryItemStatus(item);
         return status === "expiring" || status === "expired";
       }).length,
-      lowStock: pantryInventory.filter((item) => getPantryItemStatus(item) === "low").length,
     }),
     [pantryInventory]
   );
-  const [preferences, setPreferences] = useState(dietaryPreferences);
+  const [preferences, setPreferences] = useState(currentUser ? (currentUser.preferences ?? []) : dietaryPreferences);
   const [newPreference, setNewPreference] = useState("");
-  const [mealEntries, setMealEntries] = useState<MealEntry[]>(mealHistory as MealEntry[]);
-  const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>(defaultShoppingList as ShoppingItem[]);
+  const [mealEntries, setMealEntries] = useState<MealEntry[]>(currentUser ? (currentUser.mealHistory as MealEntry[] ?? []) : (mealHistory as MealEntry[]));
+  const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>(currentUser ? (currentUser.shopping ?? []) : (defaultShoppingList as ShoppingItem[]));
   const [mealName, setMealName] = useState("Chicken Rice Bowl");
   const [mealDate, setMealDate] = useState(new Date().toISOString().slice(0, 10));
-  const [recommendation, setRecommendation] = useState("Loading your meal intelligence...");
+  const [recommendation, setRecommendation] = useState<RecommendationRecipe | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isRecipeSaved, setIsRecipeSaved] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
 
+    const user = getCurrentUser();
     const storedPantry = window.localStorage.getItem("pantrypal-pantry-items");
     const storedMeals = window.localStorage.getItem("pantrypal-meal-history");
     const storedShopping = window.localStorage.getItem("pantrypal-shopping-list");
 
-    if (storedPantry) {
-      try {
-        setPantryInventory(JSON.parse(storedPantry) as PantryEntry[]);
-      } catch {
-        setPantryInventory(pantryItems as PantryEntry[]);
+    if (user) {
+      setPantryInventory((user.pantry ?? []) as PantryEntry[]);
+      setMealEntries((user.mealHistory ?? []) as MealEntry[]);
+      setShoppingItems((user.shopping ?? []) as ShoppingItem[]);
+      setPreferences(user.preferences ?? []);
+    } else {
+      if (storedPantry) {
+        try {
+          setPantryInventory(JSON.parse(storedPantry) as PantryEntry[]);
+        } catch {
+          setPantryInventory(pantryItems as PantryEntry[]);
+        }
       }
-    }
 
-    if (storedMeals) {
-      try {
-        setMealEntries(JSON.parse(storedMeals) as MealEntry[]);
-      } catch {
-        setMealEntries(mealHistory as MealEntry[]);
+      if (storedMeals) {
+        try {
+          setMealEntries(JSON.parse(storedMeals) as MealEntry[]);
+        } catch {
+          setMealEntries(mealHistory as MealEntry[]);
+        }
       }
-    }
 
-    if (storedShopping) {
-      try {
-        setShoppingItems(JSON.parse(storedShopping) as ShoppingItem[]);
-      } catch {
-        setShoppingItems(defaultShoppingList as ShoppingItem[]);
+      if (storedShopping) {
+        try {
+          setShoppingItems(JSON.parse(storedShopping) as ShoppingItem[]);
+        } catch {
+          setShoppingItems(defaultShoppingList as ShoppingItem[]);
+        }
       }
     }
 
@@ -118,10 +137,23 @@ export default function HomePage() {
       return;
     }
 
+    const user = getCurrentUser();
+
+    if (user) {
+      saveCurrentUser({
+        ...user,
+        pantry: pantryInventory,
+        mealHistory: mealEntries,
+        shopping: shoppingItems,
+        preferences,
+      });
+      return;
+    }
+
     window.localStorage.setItem("pantrypal-meal-history", JSON.stringify(mealEntries));
     window.localStorage.setItem("pantrypal-pantry-items", JSON.stringify(pantryInventory));
     window.localStorage.setItem("pantrypal-shopping-list", JSON.stringify(shoppingItems));
-  }, [hydrated, mealEntries, pantryInventory, shoppingItems]);
+  }, [hydrated, mealEntries, pantryInventory, preferences, shoppingItems]);
 
   const addPreference = (event: React.FormEvent) => {
     event.preventDefault();
@@ -164,6 +196,21 @@ export default function HomePage() {
     setMealDate(new Date().toISOString().slice(0, 10));
   };
 
+  const addRecommendationToRecipeList = (recipe: RecommendationRecipe) => {
+    const activeUser = getCurrentUser();
+
+    if (!activeUser) {
+      return;
+    }
+
+    const existingRecipes = Array.isArray(activeUser.recipes) ? activeUser.recipes : [];
+    saveCurrentUser({
+      ...activeUser,
+      recipes: [recipe, ...existingRecipes.filter((existingRecipe) => existingRecipe.id !== recipe.id)],
+    });
+    setIsRecipeSaved(true);
+  };
+
   const generateRecommendation = async () => {
     setIsGenerating(true);
 
@@ -179,9 +226,30 @@ export default function HomePage() {
       });
 
       const data = await response.json();
-      setRecommendation(data.recommendation || "No recommendation available yet.");
+      const recipe = data.recipe ?? data.recommendation;
+
+      if (recipe && typeof recipe === "object" && recipe.title) {
+        const createdRecipe: RecommendationRecipe = {
+          id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+          title: String(recipe.title),
+          time: String(recipe.time || "25 min"),
+          servings: Number(recipe.servings || 2),
+          tags: Array.isArray(recipe.tags) ? recipe.tags.map(String) : ["AI suggestion"],
+          match: 100,
+          ingredients: Array.isArray(recipe.ingredients) ? recipe.ingredients.map(String).filter(Boolean) : [],
+          instructions: Array.isArray(recipe.instructions) ? recipe.instructions.map(String).filter(Boolean) : ["Cook and enjoy."],
+        };
+
+        setRecommendation(createdRecipe);
+        setIsRecipeSaved(false);
+        return;
+      }
+
+      setRecommendation(null);
+      setIsRecipeSaved(false);
     } catch {
-      setRecommendation("I couldn't generate a recommendation right now, but your recent classes are saved and ready.");
+      setRecommendation(null);
+      setIsRecipeSaved(false);
     } finally {
       setIsGenerating(false);
     }
@@ -198,8 +266,19 @@ export default function HomePage() {
         .split(/[^a-z]+/)
         .filter(Boolean)
     );
+    const userRecipes = currentUser?.recipes ?? [];
 
-    return [...recipes]
+    if (!currentUser || userRecipes.length === 0) {
+      return [];
+    }
+
+    const hasMeaningfulSignals = pantryNames.length > 0 || preferences.length > 0 || recentMealKeywords.length > 0;
+
+    if (!hasMeaningfulSignals) {
+      return [];
+    }
+
+    return [...userRecipes]
       .map((recipe) => {
         const ingredientMatches = recipe.ingredients.filter((ingredient) =>
           pantryNames.some((name) => name.includes(ingredient.toLowerCase()) || ingredient.toLowerCase().includes(name))
@@ -219,14 +298,15 @@ export default function HomePage() {
 
         const match = Math.min(
           98,
-          35 + ingredientMatches * 18 + preferenceMatches * 12 + recentMatchCount * 10
+          ingredientMatches * 18 + preferenceMatches * 12 + recentMatchCount * 10
         );
 
         return { ...recipe, match };
       })
+      .filter((recipe) => recipe.match > 0)
       .sort((a, b) => b.match - a.match)
       .slice(0, 3);
-  }, [mealEntries, pantryInventory, preferences]);
+  }, [currentUser, mealEntries, pantryInventory, preferences]);
 
   return (
     <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-8">
@@ -269,8 +349,7 @@ export default function HomePage() {
           {[
             { label: "Items in pantry", value: summary.totalItems, accent: "bg-[#edf4ee] text-[#496a5a]", glow: "from-[#a9beae]/20 to-[#d9c1b4]/20" },
             { label: "Expiring soon", value: summary.expiringSoon, accent: "bg-[#f8efe7] text-[#9d643e]", glow: "from-[#dba985]/20 to-[#f3dfd5]/20" },
-            { label: "Low stock", value: summary.lowStock, accent: "bg-[#f9f0d8] text-[#8d6a1d]", glow: "from-[#ebd79d]/20 to-[#f5efd6]/20" },
-            { label: "Recipes ready", value: recipes.length, accent: "bg-[#edf3f7] text-[#4a6476]", glow: "from-[#b7d0dc]/20 to-[#dfe7ee]/20" },
+            { label: "Recipes ready", value: suggestedRecipes.length, accent: "bg-[#edf3f7] text-[#4a6476]", glow: "from-[#b7d0dc]/20 to-[#dfe7ee]/20" },
           ].map((card) => (
             <Link
               key={card.label}
@@ -299,17 +378,12 @@ export default function HomePage() {
                 <Link
                   key={item.id}
                   href="/inventory"
-                  className="flex items-center justify-between rounded-2xl border border-slate-200/80 bg-gradient-to-r from-slate-50 to-white px-4 py-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md"
+                  className="flex w-full items-center justify-between rounded-2xl border border-slate-200/80 bg-gradient-to-r from-slate-50 to-white px-4 py-3 shadow-sm transition hover:border-emerald-200 hover:shadow-md"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[#edf4ee] to-[#f4e5db] text-xl shadow-inner">
-                      {getItemEmoji(item.name)}
-                    </div>
-                    <div>
-                      <div className="font-semibold text-slate-800">{item.name}</div>
-                      <div className="text-sm text-slate-500">
-                        {item.quantity} {item.unit} · {item.location}
-                      </div>
+                  <div className="min-w-0 text-left">
+                    <div className="font-semibold text-slate-800">{item.name}</div>
+                    <div className="text-sm text-slate-500">
+                      {item.quantity} {item.unit} · {item.location}
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -327,32 +401,38 @@ export default function HomePage() {
             <div className="rounded-[30px] border border-white/80 bg-white/80 p-5 shadow-[0_20px_50px_rgba(15,23,42,0.06)] backdrop-blur-xl">
               <h2 className="text-xl font-bold text-slate-900">Smart suggestions</h2>
               <div className="mt-4 space-y-3">
-                {suggestedRecipes.map((recipe) => (
-                  <Link
-                    key={recipe.id}
-                    href="/recipes"
-                    className="block rounded-2xl border border-[#eddcce] bg-gradient-to-r from-[#f7f3eee9] to-white p-3 transition hover:border-[#d9baa8] hover:shadow-md"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-semibold text-slate-800">{recipe.title}</span>
-                      <span className="rounded-full bg-gradient-to-r from-[#7c9b82] to-[#c97d5d] px-2 py-1 text-[10px] font-bold text-white">
-                        {Math.round(recipe.match)}% match
-                      </span>
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-600">
-                      <span>{recipe.time}</span>
-                      <span>•</span>
-                      <span>{recipe.servings} servings</span>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {recipe.tags.map((tag) => (
-                        <span key={tag} className="rounded-full bg-white px-2 py-1 text-[11px] font-medium text-slate-600 shadow-sm">
-                          {tag}
+                {suggestedRecipes.length > 0 ? (
+                  suggestedRecipes.map((recipe) => (
+                    <Link
+                      key={recipe.id}
+                      href="/recipes"
+                      className="block rounded-2xl border border-[#eddcce] bg-gradient-to-r from-[#f7f3eee9] to-white p-3 transition hover:border-[#d9baa8] hover:shadow-md"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-slate-800">{recipe.title}</span>
+                        <span className="rounded-full bg-gradient-to-r from-[#7c9b82] to-[#c97d5d] px-2 py-1 text-[10px] font-bold text-white">
+                          {Math.round(recipe.match)}% match
                         </span>
-                      ))}
-                    </div>
-                  </Link>
-                ))}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-600">
+                        <span>{recipe.time}</span>
+                        <span>•</span>
+                        <span>{recipe.servings} servings</span>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {recipe.tags.map((tag) => (
+                          <span key={tag} className="rounded-full bg-white px-2 py-1 text-[11px] font-medium text-slate-600 shadow-sm">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </Link>
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-[#e5d7cd] bg-[#f9f4ef] p-4 text-sm text-slate-600">
+                    Add ingredients, preferences, or meal history to unlock suggestions.
+                  </div>
+                )}
               </div>
             </div>
 
@@ -422,7 +502,79 @@ export default function HomePage() {
 
             <div className="mt-5 rounded-2xl border border-[#ead7ca] bg-gradient-to-r from-[#f7f2ee] to-[#edf4ee] p-3.5 shadow-inner shadow-[#ead7ca]">
               <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#5f7262]">AI recommendation</div>
-              <p className="mt-2 text-sm leading-6 text-slate-700">{recommendation}</p>
+
+              {recommendation ? (
+                <div className="mt-3 space-y-3 text-sm text-slate-700">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900">{recommendation.title}</h3>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                        <span>{recommendation.time}</span>
+                        <span>•</span>
+                        <span>{recommendation.servings} servings</span>
+                      </div>
+                    </div>
+                    <span className="rounded-full bg-[#dfeae0] px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-[#496a5a]">
+                      AI
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {recommendation.tags.map((tag) => (
+                      <span key={tag} className="rounded-full bg-white px-2 py-1 text-[11px] font-medium text-slate-600 shadow-sm">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div>
+                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Ingredients</div>
+                    <ul className="space-y-1 pl-5">
+                      {recommendation.ingredients.map((ingredient) => (
+                        <li key={ingredient} className="list-disc text-slate-700">
+                          <span>{ingredient}</span>
+                          <span className="ml-2 text-[11px] text-slate-500">
+                            ({formatNutrientFacts(getRecipeNutrition([ingredient]))})
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-700">Recipe nutrition</div>
+                    <div className="mt-1 text-sm font-medium text-slate-700">
+                      {formatNutrientFacts(getRecipeNutrition(recommendation.ingredients))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Instructions</div>
+                    <ol className="list-decimal space-y-1 pl-5">
+                      {recommendation.instructions.map((instruction) => (
+                        <li key={instruction}>{instruction}</li>
+                      ))}
+                    </ol>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => addRecommendationToRecipeList(recommendation)}
+                    disabled={!getCurrentUser() || isRecipeSaved}
+                    className={`w-full rounded-full px-4 py-2.5 text-sm font-semibold shadow-md transition ${
+                      isRecipeSaved
+                        ? "bg-emerald-600 text-white shadow-emerald-200 hover:bg-emerald-700"
+                        : "bg-gradient-to-r from-[#7c9b82] to-[#c97d5d] text-white shadow-[#dcc4b5] hover:shadow-lg"
+                    } disabled:cursor-not-allowed disabled:opacity-60`}
+                  >
+                    {isRecipeSaved ? "Added ✓ Recipe saved" : getCurrentUser() ? "Add to recipe list" : "Log in to save"}
+                  </button>
+                </div>
+              ) : (
+                <p className="mt-2 text-sm leading-6 text-slate-700">
+                  Loading your meal intelligence...
+                </p>
+              )}
             </div>
 
             <div className="mt-5 space-y-2">
