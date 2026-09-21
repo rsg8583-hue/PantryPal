@@ -46,7 +46,7 @@ type RecommendationRecipe = {
   tags: string[];
   ingredients: string[];
   instructions: string[];
-  match?: number;
+  match: number;
 };
 
 function getItemEmoji(name: string) {

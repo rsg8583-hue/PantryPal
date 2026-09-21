@@ -12,12 +12,26 @@ type RecipeRecommendation = {
 
 function buildFallbackRecipe(mealHistory: unknown[], pantryItems: unknown[], preferences: unknown[]): RecipeRecommendation {
     const recentMeals = Array.isArray(mealHistory)
-        ? mealHistory.slice(0, 3).map((entry: { meal?: string }) => entry.meal ?? "recent meal").join(", ")
+        ? mealHistory.slice(0, 3).map((entry) => {
+            if (typeof entry === "object" && entry !== null && "meal" in entry && typeof (entry as { meal?: unknown }).meal === "string") {
+                return (entry as { meal: string }).meal;
+            }
+
+            return "recent meal";
+        }).join(", ")
         : "recent meals";
     const pantrySummary = Array.isArray(pantryItems)
-        ? pantryItems.slice(0, 5).map((item: { name?: string }) => item.name ?? "pantry item")
+        ? pantryItems.slice(0, 5).map((item) => {
+            if (typeof item === "object" && item !== null && "name" in item && typeof (item as { name?: unknown }).name === "string") {
+                return String((item as { name: string }).name);
+            }
+
+            return "pantry item";
+        })
         : ["Chicken Breast", "Rice", "Spinach"];
-    const tags = Array.isArray(preferences) && preferences.length > 0 ? preferences.slice(0, 2) as string[] : ["Balanced", "Quick"];
+    const tags = Array.isArray(preferences) && preferences.length > 0
+        ? preferences.slice(0, 2).map((tag) => String(tag))
+        : ["Balanced", "Quick"];
 
     return {
         title: `Protein Bowl Inspired by ${recentMeals || "Your Pantry"}`,

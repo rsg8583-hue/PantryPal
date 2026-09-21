@@ -7,7 +7,7 @@ export type PantryItem = {
     unit: string;
     expiration: string;
     location: string;
-    status: "fresh" | "expiring" | "expired";
+    status: "fresh" | "low" | "expiring" | "expired";
 };
 
 export type Recipe = {
